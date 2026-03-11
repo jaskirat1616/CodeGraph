@@ -7,7 +7,7 @@ A local developer tool that converts a codebase into a graph database stored in 
 - **Multi-language parsing**: Python, JavaScript/TypeScript (`.js`, `.ts`, `.jsx`, `.tsx`, `.cjs`, `.mjs`, `.cts`, `.mts`), Java, Go, C/C++ (`.cpp`, `.cc`, `.cxx`, `.h`, `.hpp`), Rust, C#
 - **Graph model**: Extracts files, classes, functions, methods, calls, and imports into a FalkorDB property graph
 - **Natural language queries**: Ask questions in plain English; Ollama generates Cypher and explains results
-- **Interactive web UI**: Cytoscape.js-based graph with lazy-loading, code preview, Gource-style animation, and light/dark mode
+- **Interactive web UI**: Three.js 3D force-directed graph with neon metallic nodes, code preview, search, and chat–graph interaction (natural-language queries highlight and zoom to results)
 - **Ollama chat**: Natural-language queries with model selector (light models like `llama3.2:1b` prioritized)
 - **Gource visualization**: Export the code graph to an animated tree visualization
 
@@ -109,9 +109,9 @@ codegraph-tool/
 ├── ui/
 │   ├── index.html
 │   ├── theme.js             # Light/dark mode toggle
-│   ├── graph.js             # Cytoscape.js visualization with lazy expand
-│   ├── chat.js              # Ollama chat panel
-│   └── style.css            # Theming (no gradients, flat design)
+│   ├── graph3d.js           # Three.js 3D force graph (neon metallic nodes)
+│   ├── chat.js              # Ollama chat panel with markdown, graph highlight
+│   └── style.css
 ├── requirements.txt
 └── README.md
 ```
@@ -153,17 +153,13 @@ codegraph-tool/
 
 ## Web UI behavior
 
-- **File-level view (default)**: For large graphs, the UI loads only **Repository + Files** (up to 500 nodes) so it stays responsive. Click a **File** to expand and see its classes, functions, and methods.
-- **Full view**: Add `?view=full` to the URL (e.g. `http://localhost:8000?view=full`) to also include Classes and Modules in the initial load.
-- **Complete view**: Add `?view=complete` to load all nodes (including Functions and Methods) and all edges (CALLS, IMPORTS). Best for exploring the full call graph.
-- **Code preview**: Click any File, Class, Function, or Method node to see its source code in the details panel.
-- **Gource-style animation**: On load, nodes reveal sequentially (Repository → File → Class → Module → Function → Method). Add `?animate=false` to disable.
-- **Ollama chat**: Click "Chat" in the toolbar to open the AI panel. Use the **Model** dropdown to choose any available Ollama model (light models like `llama3.2:1b`, `phi3:mini` appear first with a ⚡ indicator). Ask questions in plain English about your code graph.
-- **Light/dark mode**: Click the sun/moon icon in the toolbar to toggle themes. Preference is saved in localStorage.
-- **Expand on click**: Click any node to lazy-load its children (e.g. a File shows its Classes/Functions; a Class shows its Methods).
-- **Node colors**: Repository (purple), File (blue), Class (red), Function (green), Method (yellow), Module (gray).
-- **Layout**: Uses Cytoscape.js `cose` (force-directed) layout; zoom and pan with mouse.
-- **Design**: Flat UI, no gradients; DM Sans and JetBrains Mono fonts; emerald accent; light and dark themes.
+- **3D force graph**: Three.js-powered interactive graph. Rotate, zoom, and pan with the mouse. Nodes use neon metallic styling (cyan, magenta, lime, gold, purple, silver) for easy type identification.
+- **View modes**: `?view=files` (default, Repository + File), `?view=full` (+ Class, Module), `?view=complete` (all nodes + CALLS, IMPORTS edges).
+- **Search**: Type in the search box to dim non-matching nodes; matching nodes stay highlighted.
+- **Code preview**: Click any File, Class, Function, or Method node to see its source in the details panel.
+- **Ollama chat**: Click "Chat" to open the AI panel. Choose a model and ask questions in plain English. Results **highlight nodes** on the graph and **zoom the camera** to them. Responses use markdown.
+- **Light/dark mode**: Toggle via the toolbar; preference saved in localStorage.
+- **Node types**: Repository (purple), File (cyan), Class (red), Function (green), Method (yellow), Module (gray). Highlighted results appear in teal.
 
 ---
 

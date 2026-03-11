@@ -1,5 +1,7 @@
+import json
 import os
 from fastapi import FastAPI, Query, HTTPException
+from fastapi.responses import StreamingResponse
 from fastapi.staticfiles import StaticFiles
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
@@ -171,6 +173,28 @@ def ollama_chat(req: ChatRequest):
         raise
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
+
+
+@app.post("/ollama/chat/stream")
+def ollama_chat_stream(req: ChatRequest):
+    """Stream chat with thinking steps."""
+    def gen():
+        try:
+            from codegraph.ollama_agent import chat_codegraph_stream, list_models
+            models = list_models(prefer_light=True)
+            if not models:
+                yield json.dumps({"stage": "error", "content": "No Ollama models"}) + "\n"
+                return
+            model_name = req.model or models[0]["name"]
+            for obj in chat_codegraph_stream(req.question, model_name):
+                yield json.dumps(obj) + "\n"
+        except Exception as e:
+            yield json.dumps({"stage": "error", "content": str(e)}) + "\n"
+
+    return StreamingResponse(
+        gen(),
+        media_type="application/x-ndjson",
+    )
 
 
 ui_path = os.path.join(os.path.dirname(__file__), "..", "ui")
