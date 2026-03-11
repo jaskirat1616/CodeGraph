@@ -1,0 +1,34 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>CodeGraph UI</title>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/cytoscape/3.26.0/cytoscape.min.js"></script>
+    <link rel="stylesheet" href="style.css">
+</head>
+<body>
+    <header class="header">
+        <h1>CodeGraph</h1>
+        <div class="toolbar">
+            <input type="text" id="search" placeholder="Search nodes..." />
+            <span id="stats"></span>
+            <a id="viewToggle" href="#">Full view</a>
+        </div>
+    </header>
+    <aside class="legend">
+        <strong>Node types</strong>
+        <div class="legend-item"><span class="dot repo"></span> Repository</div>
+        <div class="legend-item"><span class="dot file"></span> File</div>
+        <div class="legend-item"><span class="dot class"></span> Class</div>
+        <div class="legend-item"><span class="dot func"></span> Function</div>
+        <div class="legend-item"><span class="dot method"></span> Method</div>
+        <div class="legend-item"><span class="dot module"></span> Module</div>
+        <p class="hint">Click a node to expand</p>
+    </aside>
+    <aside class="details-panel" id="detailsPanel">
+        <h3>Node details</h3>
+        <div id="detailsContent"></div>
+    </aside>
+    <div id="cy"></div>
+    <script src="graph.js"></script>
+</body>
+</html>
