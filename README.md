@@ -2,6 +2,8 @@
 
 A local developer tool that converts a codebase into a graph database stored in FalkorDB, allows natural-language querying via Ollama, and provides visual exploration of the graph through a web UI and Gource animation.
 
+![CodeGraph demo](assets/demo.gif)
+
 ## Features
 
 - **Multi-language parsing**: Python, JavaScript/TypeScript (`.js`, `.ts`, `.jsx`, `.tsx`, `.cjs`, `.mjs`, `.cts`, `.mts`), Java, Go, C/C++ (`.cpp`, `.cc`, `.cxx`, `.h`, `.hpp`), Rust, C#
