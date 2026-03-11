@@ -34,7 +34,8 @@ def main():
 
     gource_parser = subparsers.add_parser("gource")
     gource_parser.add_argument("--files-only", action="store_true", help="Export only files (faster for huge graphs)")
-    gource_parser.add_argument("--limit", type=int, default=2000, help="Max nodes per type (default 2000)")
+    gource_parser.add_argument("--detailed", action="store_true", help="Export full graph (no limit), slower animation for detail")
+    gource_parser.add_argument("--limit", type=int, default=10000, help="Max nodes per type (default 10000)")
     
     args = parser.parse_args()
 
@@ -50,7 +51,7 @@ def main():
     elif args.command == "ui":
         uvicorn.run("server.api:app", host="0.0.0.0", port=args.port, reload=True)
     elif args.command == "gource":
-        run_gource(files_only=args.files_only, limit=args.limit)
+        run_gource(files_only=args.files_only, limit=args.limit, detailed=args.detailed)
     else:
         parser.print_help()
 

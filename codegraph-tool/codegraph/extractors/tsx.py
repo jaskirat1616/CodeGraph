@@ -4,7 +4,9 @@ def extract(root_node, filepath, entities):
             name_node = node.child_by_field_name('name')
             if name_node:
                 c_name = name_node.text.decode('utf8')
-                entities['classes'].append({'name': c_name, 'filepath': filepath})
+                start_line = node.start_point[0] + 1
+                end_line = node.end_point[0] + 1
+                entities['classes'].append({'name': c_name, 'filepath': filepath, 'start_line': start_line, 'end_line': end_line})
                 for child in node.children:
                     traverse(child, current_class=c_name, current_func=current_func)
             return
@@ -15,11 +17,12 @@ def extract(root_node, filepath, entities):
                 f_name = name_node.text.decode('utf8')
             else:
                 f_name = 'anonymous'
-                
+            start_line = node.start_point[0] + 1
+            end_line = node.end_point[0] + 1
             if current_class and node.type == 'method_definition':
-                entities['methods'].append({'name': f_name, 'class': current_class, 'filepath': filepath})
+                entities['methods'].append({'name': f_name, 'class': current_class, 'filepath': filepath, 'start_line': start_line, 'end_line': end_line})
             else:
-                entities['functions'].append({'name': f_name, 'filepath': filepath})
+                entities['functions'].append({'name': f_name, 'filepath': filepath, 'start_line': start_line, 'end_line': end_line})
             
             for child in node.children:
                 traverse(child, current_class=current_class, current_func=f_name)

@@ -1,7 +1,12 @@
 <!DOCTYPE html>
-<html>
+<html lang="en">
 <head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
     <title>CodeGraph UI</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500&family=DM+Sans:wght@400;500;600&display=swap" rel="stylesheet">
     <script src="https://cdnjs.cloudflare.com/ajax/libs/cytoscape/3.26.0/cytoscape.min.js"></script>
     <link rel="stylesheet" href="style.css">
 </head>
@@ -12,6 +17,9 @@
             <input type="text" id="search" placeholder="Search nodes..." />
             <span id="stats"></span>
             <a id="viewToggle" href="#">Full view</a>
+            <a id="animateToggle" href="#" title="Gource-style reveal">Animate</a>
+            <a id="chatToggle" href="#" class="btn-chat" title="Chat with Ollama">Chat</a>
+            <button id="themeToggle" type="button" class="btn-theme" title="Toggle light/dark mode" aria-label="Toggle theme"></button>
         </div>
     </header>
     <aside class="legend">
@@ -22,13 +30,28 @@
         <div class="legend-item"><span class="dot func"></span> Function</div>
         <div class="legend-item"><span class="dot method"></span> Method</div>
         <div class="legend-item"><span class="dot module"></span> Module</div>
-        <p class="hint">Click a node to expand</p>
+        <p class="hint">Click a node to expand and view code</p>
     </aside>
     <aside class="details-panel" id="detailsPanel">
         <h3>Node details</h3>
         <div id="detailsContent"></div>
     </aside>
     <div id="cy"></div>
+    <aside class="chat-panel" id="chatPanel">
+        <div class="chat-header">
+            <h3>Ask about your code</h3>
+            <label class="chat-model-label">Model (choose any Ollama model)</label>
+            <select id="chatModel" class="chat-model-select" title="Select an Ollama model — light models appear first"></select>
+            <span id="chatStatus" class="chat-status"></span>
+        </div>
+        <div class="chat-messages" id="chatMessages"></div>
+        <div class="chat-input-wrap">
+            <input type="text" id="chatInput" placeholder="e.g. Which functions call the database?" autocomplete="off">
+            <button type="button" id="chatSend" class="chat-send">Send</button>
+        </div>
+    </aside>
+    <script src="theme.js"></script>
     <script src="graph.js"></script>
+    <script src="chat.js"></script>
 </body>
 </html>

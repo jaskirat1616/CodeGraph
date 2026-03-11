@@ -7,7 +7,8 @@ A local developer tool that converts a codebase into a graph database stored in 
 - **Multi-language parsing**: Python, JavaScript/TypeScript (`.js`, `.ts`, `.jsx`, `.tsx`, `.cjs`, `.mjs`, `.cts`, `.mts`), Java, Go, C/C++ (`.cpp`, `.cc`, `.cxx`, `.h`, `.hpp`), Rust, C#
 - **Graph model**: Extracts files, classes, functions, methods, calls, and imports into a FalkorDB property graph
 - **Natural language queries**: Ask questions in plain English; Ollama generates Cypher and explains results
-- **Interactive web UI**: Cytoscape.js-based graph with lazy-loading for large codebases
+- **Interactive web UI**: Cytoscape.js-based graph with lazy-loading, code preview, Gource-style animation, and light/dark mode
+- **Ollama chat**: Natural-language queries with model selector (light models like `llama3.2:1b` prioritized)
 - **Gource visualization**: Export the code graph to an animated tree visualization
 
 ## Prerequisites
@@ -76,8 +77,16 @@ python3 codegraph/cli.py gource
 ```
 
 Options:
+- `--detailed` – Export full graph (no limit), slower animation to show all classes/functions/methods
 - `--files-only` – Export only Repository + Files (faster for huge graphs)
-- `--limit N` – Max nodes per type (default 2000). Increase for more detail.
+- `--limit N` – Max nodes per type (default 10000)
+
+### Full visualization
+
+For the fullest visualization of your indexed graph:
+
+- **Web UI (complete)**: Run `python3 codegraph/cli.py ui`, then open **http://localhost:8000?view=complete**. This loads all node types (Repository, File, Class, Module, Function, Method) and edges (CONTAINS, CALLS, IMPORTS). Use this to explore call graphs and import relationships.
+- **Gource**: Run `python3 codegraph/cli.py gource --detailed` for an animated tree with all files, classes, functions, and methods. Nodes appear over time with slower animation and longer visibility. Note: Gource shows nodes only; for relationship edges (CALLS, IMPORTS), use the Web UI.
 
 ---
 
@@ -99,8 +108,10 @@ codegraph-tool/
 │   └── api.py              # FastAPI backend: /graph/nodes, /graph/edges, /graph/expand/{id}
 ├── ui/
 │   ├── index.html
+│   ├── theme.js             # Light/dark mode toggle
 │   ├── graph.js             # Cytoscape.js visualization with lazy expand
-│   └── style.css
+│   ├── chat.js              # Ollama chat panel
+│   └── style.css            # Theming (no gradients, flat design)
 ├── requirements.txt
 └── README.md
 ```
@@ -117,7 +128,7 @@ codegraph-tool/
 | `ask "<question>"` | Ask a natural language question; Ollama generates Cypher and explains results |
 | `find_callers <func>` | List functions/methods that call the given name |
 | `show_dependencies <node>` | List outgoing dependencies of a node |
-| `gource [--files-only] [--limit N]` | Export graph to Gource; `--files-only` for light export, `--limit` caps nodes per type |
+| `gource [--detailed] [--files-only] [--limit N]` | Export to Gource; `--detailed` for full graph, `--files-only` for light export |
 
 ---
 
@@ -143,10 +154,16 @@ codegraph-tool/
 ## Web UI behavior
 
 - **File-level view (default)**: For large graphs, the UI loads only **Repository + Files** (up to 500 nodes) so it stays responsive. Click a **File** to expand and see its classes, functions, and methods.
-- **Full view**: Add `?view=full` to the URL (e.g. `http://localhost:8000?view=full`) or call the API with `view=full` to also include Classes and Modules in the initial load.
+- **Full view**: Add `?view=full` to the URL (e.g. `http://localhost:8000?view=full`) to also include Classes and Modules in the initial load.
+- **Complete view**: Add `?view=complete` to load all nodes (including Functions and Methods) and all edges (CALLS, IMPORTS). Best for exploring the full call graph.
+- **Code preview**: Click any File, Class, Function, or Method node to see its source code in the details panel.
+- **Gource-style animation**: On load, nodes reveal sequentially (Repository → File → Class → Module → Function → Method). Add `?animate=false` to disable.
+- **Ollama chat**: Click "Chat" in the toolbar to open the AI panel. Use the **Model** dropdown to choose any available Ollama model (light models like `llama3.2:1b`, `phi3:mini` appear first with a ⚡ indicator). Ask questions in plain English about your code graph.
+- **Light/dark mode**: Click the sun/moon icon in the toolbar to toggle themes. Preference is saved in localStorage.
 - **Expand on click**: Click any node to lazy-load its children (e.g. a File shows its Classes/Functions; a Class shows its Methods).
 - **Node colors**: Repository (purple), File (blue), Class (red), Function (green), Method (yellow), Module (gray).
 - **Layout**: Uses Cytoscape.js `cose` (force-directed) layout; zoom and pan with mouse.
+- **Design**: Flat UI, no gradients; DM Sans and JetBrains Mono fonts; emerald accent; light and dark themes.
 
 ---
 

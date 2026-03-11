@@ -3,7 +3,7 @@ import time
 import os
 import subprocess
 
-def run_gource(files_only=False, limit=2000):
+def run_gource(files_only=False, limit=10000, detailed=False):
     db = FalkorDB(host='localhost', port=6379)
     g = db.select_graph('codegraph')
 
@@ -27,8 +27,10 @@ def run_gource(files_only=False, limit=2000):
             if repo_name in s:
                 s = s.split(repo_name, 1)[-1].lstrip("/")
             out.append(s)
-        return "/" + repo_name + "/" + "/".join(out)
+        return repo_name + "/" + "/".join(out)  # No leading slash for Gource
 
+    if detailed:
+        limit = 100000  # Export everything for detailed view
     # 1. Add Files (blue)
     file_res = g.query(f"MATCH (f:File) RETURN f.path LIMIT {limit}").result_set
     for r in file_res:
@@ -80,17 +82,25 @@ def run_gource(files_only=False, limit=2000):
     print("Launching Gource...")
     
     try:
-        subprocess.run([
+        # Slower animation + nodes stay visible longer for detailed view
+        speed = "0.1" if detailed else "0.2"
+        font_scale = "1.4" if detailed else "1.2"
+        idle_time = "300" if detailed else "120"  # 5 min for detailed, 2 min default
+        cmd = [
             "gource",
             "--log-format", "custom",
             log_path,
-            "-s", "1",
-            "--auto-skip-seconds", "0.05",
+            "-s", speed,
+            "--auto-skip-seconds", "0.01",
+            "--file-idle-time", idle_time,
+            "--seconds-per-day", "2" if detailed else "0.5",  # Slower progression for full visualization
+            "--max-file-lag", "0.01",
             "--title", f"{repo_name} CodeGraph — Blue=File  Red=Class  Green=Function  Yellow=Method",
             "--key",
             "--file-extensions",
-            "--max-file-lag", "0.02",
-        ])
+            "--font-scale", font_scale,
+        ]
+        subprocess.run(cmd)
     except FileNotFoundError:
         print("\nError: Gource is not installed or not in your PATH.")
         print("Install it using: brew install gource")

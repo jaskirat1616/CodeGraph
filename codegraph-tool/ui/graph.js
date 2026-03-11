@@ -1,6 +1,8 @@
-// File-level view by default for large graphs; use ?view=full in URL for Classes+Modules too
+// View modes: files (lightweight), full (+Class+Module), complete (+Function+Method, all CALLS/IMPORTS)
 var urlParams = new URLSearchParams(window.location.search);
-var view = urlParams.get('view') === 'full' ? 'full' : 'files';
+var viewParam = urlParams.get('view');
+var view = ['files', 'full', 'complete'].includes(viewParam) ? viewParam : 'files';
+var animateReveal = urlParams.get('animate') !== 'false';  // Gource-like reveal; ?animate=false to disable
 var cy;
 
 function updateStats() {
@@ -21,30 +23,67 @@ function showDetails(node) {
   var data = node.data();
   var html = '<div class="detail-row"><span class="detail-label">Type</span><div class="detail-value">' + (data.label || '') + '</div></div>';
   html += '<div class="detail-row"><span class="detail-label">Name</span><div class="detail-value">' + (data.name || '(unnamed)') + '</div></div>';
-  if (data.path) html += '<div class="detail-row"><span class="detail-label">Path</span><div class="detail-value">' + data.path + '</div></div>';
+  if (data.path) html += '<div class="detail-row"><span class="detail-label">Path</span><div class="detail-value">' + escapeHtml(data.path) + '</div></div>';
   var out = node.outgoers('node').length;
   var in_ = node.incomers('node').length;
   html += '<div class="detail-row"><span class="detail-label">Outgoing</span><div class="detail-value">' + out + ' connections</div></div>';
   html += '<div class="detail-row"><span class="detail-label">Incoming</span><div class="detail-value">' + in_ + ' connections</div></div>';
   if (data.expanded) html += '<div class="detail-row"><span class="detail-label">Status</span><div class="detail-value">Expanded</div></div>';
+  html += '<div id="detailCode" class="detail-code" style="margin-top:0.75em;display:none;"></div>';
   content.innerHTML = html;
+  var codeEl = document.getElementById('detailCode');
+  var label = data.label || '';
+  if (['File', 'Class', 'Function', 'Method'].indexOf(label) >= 0) {
+    codeEl.style.display = 'block';
+    codeEl.innerHTML = '<div class="detail-label">Code</div><pre class="code-snippet"><code>Loading…</code></pre>';
+    fetch('/graph/node/' + node.id() + '/code').then(function(res) { return res.json(); }).then(function(r) {
+      var pre = codeEl.querySelector('.code-snippet code');
+      if (r.code != null) {
+        pre.textContent = r.code;
+      } else {
+        pre.textContent = r.error || 'Code not available';
+      }
+    }).catch(function() {
+      codeEl.querySelector('.code-snippet code').textContent = 'Failed to load code';
+    });
+  }
+}
+function escapeHtml(s) {
+  var div = document.createElement('div');
+  div.textContent = s;
+  return div.innerHTML;
 }
 
+var nodeLimit = view === 'complete' ? 2000 : 500;
+var edgeLimit = view === 'complete' ? 5000 : 1000;
 Promise.all([
-  fetch('/graph/nodes?view=' + view + '&limit=500').then(res => res.json()),
-  fetch('/graph/edges?view=' + view + '&limit=1000').then(res => res.json())
+  fetch('/graph/nodes?view=' + view + '&limit=' + nodeLimit).then(res => res.json()),
+  fetch('/graph/edges?view=' + view + '&limit=' + edgeLimit).then(res => res.json())
 ]).then(([nodes, edges]) => {
   if (!nodes.length && !edges.length) {
     document.getElementById('cy').innerHTML = '<div style="color:#888;padding:2em;text-align:center;">No graph data. Index a repository first: <code>python3 codegraph/cli.py index_repo /path/to/repo</code></div>';
     return;
   }
-  document.getElementById('viewToggle').href = view === 'files' ? '?view=full' : '?view=files';
-  document.getElementById('viewToggle').textContent = view === 'files' ? 'Full view' : 'File view';
+  var nextView = view === 'files' ? 'full' : view === 'full' ? 'complete' : 'files';
+  var nextLabel = view === 'files' ? 'Full view' : view === 'full' ? 'Complete view' : 'File view';
+  document.getElementById('viewToggle').href = '?view=' + nextView;
+  document.getElementById('viewToggle').textContent = nextLabel;
+  var animateHref = new URL(window.location);
+  animateHref.searchParams.set('animate', animateReveal ? 'false' : 'true');
+  document.getElementById('animateToggle').href = animateHref.toString();
+  document.getElementById('animateToggle').textContent = animateReveal ? 'No animation' : 'Animate';
   document.getElementById('detailsPanel').classList.add('hidden');
+  var initialElements = nodes.map(function(n) {
+    return animateReveal ? { data: n.data, classes: 'revealing' } : n;
+  }).concat(edges);
   cy = cytoscape({
     container: document.getElementById('cy'),
-    elements: [...nodes, ...edges],
+    elements: initialElements,
     style: [
+      {
+        selector: 'node.revealing',
+        style: { 'opacity': 0 }
+      },
       {
         selector: 'node',
         style: {
@@ -87,10 +126,40 @@ Promise.all([
       padding: 50,
       nodeRepulsion: 400000,
       idealEdgeLength: 100,
-      edgeElasticity: 100
+      edgeElasticity: 100,
+      animate: animateReveal ? 'end' : false
     }
   });
   updateStats();
+
+  if (animateReveal && cy.nodes().length > 0) {
+    cy.edges().style('opacity', 0);
+    var order = { 'Repository': 0, 'File': 1, 'Class': 2, 'Module': 3, 'Function': 4, 'Method': 5 };
+    var sorted = cy.nodes().sort(function(a, b) {
+      var oa = order[a.data('label')] ?? 6;
+      var ob = order[b.data('label')] ?? 6;
+      return oa - ob;
+    });
+    var delayMs = Math.max(30, Math.min(150, 4000 / sorted.length));
+    var batchSize = Math.max(1, Math.floor(sorted.length / 80));
+    function revealNext(i) {
+      if (i >= sorted.length) {
+        cy.edges().animate({ style: { opacity: 0.8 } }, { duration: 300 });
+        return;
+      }
+      var batch = sorted.slice(i, i + batchSize);
+      batch.forEach(function(n) {
+        n.removeClass('revealing');
+        n.animate({ style: { opacity: 1 } }, { duration: 350 });
+      });
+      var outgoing = batch.flatMap(function(n) { return n.connectedEdges().toArray(); });
+      outgoing.forEach(function(e) {
+        if (e.style('opacity') === 0) e.animate({ style: { opacity: 0.8 } }, { duration: 250 });
+      });
+      setTimeout(function() { revealNext(i + batchSize); }, delayMs);
+    }
+    cy.once('layoutstop', function() { setTimeout(function() { revealNext(0); }, 200); });
+  }
 
   cy.on('tap', 'node', function(evt){
     var node = evt.target;
@@ -103,17 +172,39 @@ Promise.all([
         .then(res => res.json())
         .then(data => {
             if (data.nodes.length > 0 || data.edges.length > 0) {
-                cy.add([...data.nodes, ...data.edges]);
+                var newNodes = data.nodes.map(function(n) { return { data: n.data, classes: animateReveal ? 'revealing' : '' }; });
+                var added = cy.add([...newNodes, ...data.edges]);
+                var addedNodes = added.filter('node');
+                var addedEdges = added.filter('edge');
+                addedEdges.style('opacity', 0);
                 node.data('expanded', true);
                 updateStats();
                 showDetails(node);
-                cy.layout({
+                var layout = cy.layout({
                   name: 'cose',
                   padding: 50,
                   nodeRepulsion: 400000,
                   idealEdgeLength: 100,
-                  edgeElasticity: 100
-                }).run();
+                  edgeElasticity: 100,
+                  animate: animateReveal
+                });
+                layout.run();
+                if (animateReveal && addedNodes.length > 0) {
+                  layout.promiseOn('layoutstop').then(function() {
+                    setTimeout(function() {
+                      addedNodes.forEach(function(n, i) {
+                        setTimeout(function() {
+                          n.removeClass('revealing');
+                          n.animate({ style: { opacity: 1 } }, { duration: 300 });
+                          n.connectedEdges().animate({ style: { opacity: 0.8 } }, { duration: 200 });
+                        }, i * 60);
+                      });
+                    }, 150);
+                  });
+                } else {
+                  addedNodes.removeClass('revealing');
+                  addedEdges.style('opacity', 0.8);
+                }
             }
         });
     }
