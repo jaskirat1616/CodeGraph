@@ -6,12 +6,17 @@ A local developer tool that converts a codebase into a graph database stored in 
 
 ## Features
 
-- **Multi-language parsing**: Python, JavaScript/TypeScript (`.js`, `.ts`, `.jsx`, `.tsx`, `.cjs`, `.mjs`, `.cts`, `.mts`), Java, Go, C/C++ (`.cpp`, `.cc`, `.cxx`, `.h`, `.hpp`), Rust, C#
-- **Graph model**: Extracts files, classes, functions, methods, calls, and imports into a FalkorDB property graph
+- **Multi-language parsing**: Python, JavaScript/TypeScript, Java, Go, C/C++, Rust, C#
+- **Graph model**: Extracts files, classes, functions, methods, calls, and imports into a property graph
 - **Natural language queries**: Ask questions in plain English; Ollama generates Cypher and explains results
-- **Interactive web UI**: Three.js 3D force-directed graph with neon metallic nodes, code preview, search, and chat–graph interaction (natural-language queries highlight and zoom to results)
-- **Ollama chat**: Natural-language queries with model selector (light models like `llama3.2:1b` prioritized)
-- **Gource visualization**: Export the code graph to an animated tree visualization
+- **Chat commands**: Execute `index repo`, `find callers`, `path from X to Y`, `impact of X`, `find cycles`, `check rules` via chat
+- **Interactive web UI**: 3D force graph with neon nodes, hotspots (size by fan-out), export PNG, shareable links
+- **Explain with AI**: Click any node → "Explain with AI" for a natural-language explanation
+- **Path finder & impact analysis**: CLI and chat support for dependency chains and downstream impact
+- **Circular dependency detection**: Find cycles in CALLS/IMPORTS
+- **Architecture rules**: Define `codegraph_rules.json` (forbidden layer pairs) and validate with `check_rules`
+- **File watcher**: `index_repo --watch` re-indexes on file changes
+- **Doc generation**: `generate_docs` produces markdown architecture docs via Ollama
 
 ## Prerequisites
 
@@ -124,13 +129,18 @@ codegraph-tool/
 
 | Command | Description |
 |--------|-------------|
-| `index_repo <path>` | Scan and parse a repository, insert into FalkorDB (clears existing graph) |
+| `index_repo <path> [--watch]` | Scan and parse a repository; `--watch` re-indexes on file changes |
 | `update_repo <path>` | Re-index (currently same as index_repo) |
 | `ui [--port 8000]` | Start the web visualization server |
-| `ask "<question>"` | Ask a natural language question; Ollama generates Cypher and explains results |
-| `find_callers <func>` | List functions/methods that call the given name |
-| `show_dependencies <node>` | List outgoing dependencies of a node |
-| `gource [--detailed] [--files-only] [--limit N]` | Export to Gource; `--detailed` for full graph, `--files-only` for light export |
+| `ask "<question>" [--json]` | Ask a natural language question; Ollama generates Cypher and explains |
+| `find_callers <func> [--json]` | List functions/methods that call the given name |
+| `show_dependencies <node> [--json]` | List outgoing dependencies of a node |
+| `path <from> <to> [--json]` | Shortest path between two nodes by name |
+| `impact <node> [--json]` | Impact analysis: all nodes that depend on this one |
+| `cycles [--json]` | Detect circular dependencies in CALLS/IMPORTS |
+| `generate_docs [--topic X] [-o file]` | Generate markdown architecture doc via Ollama |
+| `check_rules [--json]` | Validate graph against `codegraph_rules.json` |
+| `gource [--detailed] [--files-only] [--limit N]` | Export to Gource |
 
 ---
 
@@ -155,13 +165,14 @@ codegraph-tool/
 
 ## Web UI behavior
 
-- **3D force graph**: Three.js-powered interactive graph. Rotate, zoom, and pan with the mouse. Nodes use neon metallic styling (cyan, magenta, lime, gold, purple, silver) for easy type identification.
-- **View modes**: `?view=files` (default, Repository + File), `?view=full` (+ Class, Module), `?view=complete` (all nodes + CALLS, IMPORTS edges).
+- **3D force graph**: Three.js-powered interactive graph. Rotate, zoom, and pan with the mouse. Nodes use neon metallic styling (cyan, magenta, lime, gold, purple, silver) for easy type identification. Node size reflects **hotspots** (fan-out: more outgoing edges = larger node).
+- **View modes**: `?view=files` (default), `?view=full`, `?view=complete` (all nodes + CALLS, IMPORTS).
 - **Search**: Type in the search box to dim non-matching nodes; matching nodes stay highlighted.
-- **Code preview**: Click any File, Class, Function, or Method node to see its source in the details panel.
-- **Ollama chat**: Click "Chat" to open the AI panel. Choose a model and ask questions in plain English. Results **highlight nodes** on the graph and **zoom the camera** to them. Responses use markdown.
-- **Light/dark mode**: Toggle via the toolbar; preference saved in localStorage.
-- **Node types**: Repository (purple), File (cyan), Class (red), Function (green), Method (yellow), Module (gray). Highlighted results appear in teal.
+- **Export PNG**: Click "Export PNG" to download a screenshot of the graph.
+- **Shareable links**: Highlighted nodes are encoded in the URL (`?highlight=id1,id2`). Share the URL to show the same view.
+- **Code preview**: Click any node to see details. Click **Explain with AI** for an Ollama-generated explanation of that node's role.
+- **Ollama chat**: Ask questions in plain English. Also supports commands: *index repo at X*, *find callers of X*, *path from X to Y*, *impact of X*, *find cycles*, *check rules*. Results highlight and zoom to nodes.
+- **Light/dark mode**: Toggle via the toolbar.
 
 ---
 

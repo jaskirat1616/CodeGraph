@@ -11,3 +11,4 @@ tree-sitter-c-sharp>=0.23.0
 ollama>=0.2.1
 fastapi>=0.111.0
 uvicorn>=0.30.0
+watchdog>=4.0.0

@@ -121,6 +121,49 @@ def get_node_code(node_id: int):
 
     return {"code": code, "path": filepath, "start_line": start_line, "end_line": end_line}
 
+@app.get("/graph/path")
+def get_path(from_id: int = Query(..., description="Source node id"), to_id: int = Query(..., description="Target node id")):
+    """Shortest path between two nodes."""
+    from codegraph.query_engine import path_between
+    paths = path_between(from_id, to_id)
+    return {"paths": paths, "node_ids": list(set(n for p in paths for n in p))}
+
+
+@app.get("/graph/impact/{node_id}")
+def get_impact(node_id: int):
+    """Downstream impact: all nodes that depend on this node."""
+    from codegraph.query_engine import impact_analysis
+    return impact_analysis(node_id)
+
+
+@app.get("/graph/cycles")
+def get_cycles():
+    """Detect circular dependencies in CALLS/IMPORTS."""
+    from codegraph.query_engine import find_cycles
+    cycles = find_cycles()
+    all_ids = list(set(n for c in cycles for n in c))
+    return {"cycles": cycles, "node_ids": all_ids}
+
+
+@app.get("/graph/rules/check")
+def check_architecture_rules():
+    """Check graph against codegraph_rules.json. Returns violations."""
+    try:
+        from codegraph.rules import check_rules
+        violations = check_rules()
+        ids = list(set(v["from_id"] for v in violations) | set(v["to_id"] for v in violations))
+        return {"violations": violations, "highlight_ids": ids}
+    except Exception as e:
+        return {"violations": [], "error": str(e)}
+
+
+@app.get("/graph/fan-out")
+def get_fan_out():
+    """Map of node_id -> outgoing edge count (for hotspot sizing)."""
+    from codegraph.query_engine import get_fan_out_map
+    return get_fan_out_map()
+
+
 @app.get("/graph/expand/{node_id}")
 def expand_node(node_id: int):
     # Endpoint to fetch children dynamically when a node is clicked
@@ -182,6 +225,28 @@ def execute_command(req: CommandRequest):
         return {"ok": False, "error": f"Unknown command: {req.command}", "output": None}
     except Exception as e:
         return {"ok": False, "error": str(e), "output": None}
+
+
+# --- Ollama explain ---
+class ExplainRequest(BaseModel):
+    node_id: int
+    model: str | None = None
+
+@app.post("/ollama/explain")
+def explain_node(req: ExplainRequest):
+    """AI explanation of a node's role in the codebase."""
+    try:
+        from codegraph.ollama_agent import explain_node_llm, list_models
+        models = list_models(prefer_light=True)
+        if not models:
+            raise HTTPException(status_code=503, detail="No Ollama models. Run: ollama pull llama3.2")
+        model_name = req.model or models[0]["name"]
+        explanation = explain_node_llm(req.node_id, model_name)
+        return {"explanation": explanation}
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
 
 
 # --- Ollama chat ---

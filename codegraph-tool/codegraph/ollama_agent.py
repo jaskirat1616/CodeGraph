@@ -50,6 +50,82 @@ def list_models(prefer_light=True):
         result.sort(key=lambda x: x['name'])
     return result
 
+def explain_node_llm(node_id, model_name):
+    """Generate AI explanation of a node's role in the codebase."""
+    from codegraph.query_engine import _get_graph
+    g = _get_graph()
+    res = g.query(
+        "MATCH (n) WHERE id(n) = $nid RETURN labels(n)[0], n.name, n.path, n.file",
+        {'nid': int(node_id)}
+    ).result_set
+    if not res:
+        return "Node not found."
+    label, name, path, filepath = res[0]
+    path = path or filepath or ""
+    # Get code snippet if available
+    code = ""
+    try:
+        code_res = g.query(
+            "MATCH (n) WHERE id(n) = $nid RETURN n.start_line, n.end_line, n.path, n.file",
+            {'nid': int(node_id)}
+        ).result_set
+        if code_res and (code_res[0][2] or code_res[0][3]):
+            fp = code_res[0][2] or code_res[0][3]
+            if os.path.exists(fp):
+                with open(fp, "r", encoding="utf-8", errors="replace") as f:
+                    lines = f.readlines()
+                sl, el = code_res[0][0], code_res[0][1]
+                if sl and el:
+                    code = "".join(lines[sl - 1:el])[:1500]
+    except Exception:
+        pass
+    prompt = f"""This is a {label} node in a code graph:
+- Name: {name}
+- Path: {path}
+{'- Code snippet:' + chr(10) + '```' + chr(10) + code + chr(10) + '```' if code else ''}
+
+Explain in 2-4 sentences: what this does, its role in the codebase, and how it likely connects to other parts. Use **bold** for key terms. Be concise."""
+    resp = ollama.chat(model=model_name, messages=[{"role": "user", "content": prompt}])
+    return resp["message"]["content"]
+
+
+def generate_architecture_doc(topic="overview"):
+    """Generate markdown architecture doc from graph + Ollama."""
+    models = list_models(prefer_light=True)
+    if not models:
+        return "# Architecture\n\nNo Ollama models. Run: ollama pull llama3.2"
+    model_name = models[0]["name"]
+    db = FalkorDB(host="localhost", port=6379)
+    g = db.select_graph("codegraph")
+    stats = []
+    for q, label in [
+        ("MATCH (n:Repository) RETURN count(n)", "Repositories"),
+        ("MATCH (n:File) RETURN count(n)", "Files"),
+        ("MATCH (n:Class) RETURN count(n)", "Classes"),
+        ("MATCH (n:Function) RETURN count(n)", "Functions"),
+        ("MATCH (n:Method) RETURN count(n)", "Methods"),
+        ("MATCH ()-[r:CALLS]->() RETURN count(r)", "CALLS edges"),
+        ("MATCH ()-[r:IMPORTS]->() RETURN count(r)", "IMPORTS edges"),
+    ]:
+        try:
+            r = g.query(q).result_set
+            stats.append(f"- {label}: {r[0][0] if r else 0}")
+        except Exception:
+            pass
+    try:
+        r = g.query("MATCH (f:File) RETURN f.path LIMIT 20").result_set
+        files = [x[0] for x in r if x and x[0]]
+    except Exception:
+        files = []
+    ctx = "\n".join(stats) + "\n\nSample files:\n" + "\n".join(f"- " + str(f) for f in files[:15])
+    prompt = f"""Given this code graph summary:
+{ctx}
+
+Generate a concise markdown architecture document (1-2 pages) for topic "{topic}". Include: high-level structure, main components, and how they connect. Use headers, bullets, and `code` for names. Be direct."""
+    resp = ollama.chat(model=model_name, messages=[{"role": "user", "content": prompt}])
+    return resp["message"]["content"]
+
+
 def ask_question(question, model_name=None):
     models = list_models(prefer_light=True)
     if not models:
@@ -60,18 +136,25 @@ def ask_question(question, model_name=None):
 
 
 COMMAND_INTENT_PROMPT = """The user may ask to RUN a command or QUERY the graph. Commands:
-- index_repo <path>: index a repository (e.g. "index /path/to/repo", "index this folder")
-- find_callers <name>: find what calls a function (e.g. "find callers of foo", "who calls main")
+- index_repo <path>: index a repository (e.g. "index /path/to/repo")
+- find_callers <name>: find what calls a function (e.g. "find callers of foo")
 - show_dependencies <name>: show what a node depends on (e.g. "dependencies of X")
+- path_between <from> <to>: path connecting two nodes (e.g. "path from main to validate", "how does X connect to Y")
+- impact <name>: what breaks if this changes (e.g. "impact of foo", "what breaks if I change X")
+- find_cycles: detect circular dependencies (e.g. "find cycles", "circular dependencies")
+- check_rules: validate architecture rules (e.g. "check rules", "validate architecture")
 
-If the user clearly wants to run one of these commands, reply with EXACTLY one line in this format (nothing else):
+If the user clearly wants one of these, reply EXACTLY one line (nothing else):
 COMMAND:index_repo:<path>
-COMMAND:find_callers:<function_name>
-COMMAND:show_dependencies:<node_name>
+COMMAND:find_callers:<name>
+COMMAND:show_dependencies:<name>
+COMMAND:path_between:<from_name>:<to_name>
+COMMAND:impact:<node_name>
+COMMAND:find_cycles
+COMMAND:check_rules
 
-Use the path or name the user gave. For "index this repo" use . or the current directory.
-If it's a graph QUESTION (e.g. "list all files", "which functions call X", "show me classes in module Y"), reply with:
-QUERY
+For path_between use the two node/function names the user gave. For find_cycles and check_rules no args. For "index this repo" use .
+Otherwise reply: QUERY
 """
 
 SYSTEM_PROMPT = """You are an expert at querying codebases using Cypher for FalkorDB. Your role is to translate natural language questions about a code graph into precise, correct Cypher queries.
@@ -149,23 +232,30 @@ Respond in **markdown**: 1-3 concise sentences explaining what the results mean.
 
 
 def _parse_command_intent(text):
-    """Parse COMMAND:name:arg from model output. Returns (command, args) or None."""
+    """Parse COMMAND:name:args from model output. Returns (command, args) or None."""
     text = (text or "").strip()
     for line in text.splitlines():
         line = line.strip()
         if line.upper().startswith("COMMAND:"):
             rest = line[8:].strip()
-            if ":" in rest:
-                name, arg = rest.split(":", 1)
-                name = name.strip().lower()
-                arg = arg.strip()
-                if name == "index_repo":
-                    path = arg or "."
-                    return ("index_repo", {"path": path})
-                if name == "find_callers":
-                    return ("find_callers", {"func": arg})
-                if name == "show_dependencies":
-                    return ("show_dependencies", {"node": arg})
+            parts = rest.split(":", 1)
+            name = (parts[0] or "").strip().lower()
+            arg = (parts[1] if len(parts) > 1 else "").strip()
+            if name == "index_repo":
+                return ("index_repo", {"path": arg or "."})
+            if name == "find_callers":
+                return ("find_callers", {"func": arg})
+            if name == "show_dependencies":
+                return ("show_dependencies", {"node": arg})
+            if name == "find_cycles":
+                return ("find_cycles", {})
+            if name == "check_rules":
+                return ("check_rules", {})
+            if name == "path_between" and ":" in arg:
+                from_name, to_name = arg.split(":", 1)
+                return ("path_between", {"from": from_name.strip(), "to": to_name.strip()})
+            if name == "impact":
+                return ("impact", {"node": arg})
     return None
 
 
@@ -202,6 +292,56 @@ def _run_command(command, args):
             ids = [r[0] for r in rows]
             lines = [f"- {r[1]} ({r[2]})" for r in rows]
             return (True, f"Dependencies of `{node}`:\n" + ("\n".join(lines) if lines else "None."), ids)
+        if command == "path_between":
+            from_name = (args.get("from") or "").strip()
+            to_name = (args.get("to") or "").strip()
+            if not from_name or not to_name:
+                return (False, "Need both from and to node names", None)
+            from codegraph.query_engine import get_node_ids_by_name, path_between
+            from_ids = get_node_ids_by_name(from_name)
+            to_ids = get_node_ids_by_name(to_name)
+            if not from_ids or not to_ids:
+                return (False, f"Could not find nodes for '{from_name}' or '{to_name}'", None)
+            all_ids = []
+            for fid, _ in from_ids[:3]:
+                for tid, _ in to_ids[:3]:
+                    paths = path_between(fid, tid)
+                    for p in paths:
+                        all_ids.extend(p)
+            all_ids = list(dict.fromkeys(all_ids))
+            if not all_ids:
+                return (True, f"No path found between `{from_name}` and `{to_name}`.", [])
+            return (True, f"Path between `{from_name}` and `{to_name}`: {len(all_ids)} nodes on path(s).", all_ids)
+        if command == "impact":
+            node = (args.get("node") or "").strip()
+            if not node:
+                return (False, "Missing node name", None)
+            from codegraph.query_engine import get_node_ids_by_name, impact_analysis
+            matches = get_node_ids_by_name(node)
+            if not matches:
+                return (False, f"Node '{node}' not found", None)
+            nid = matches[0][0]
+            out = impact_analysis(nid)
+            ids = out["node_ids"]
+            lines = out["summary"]
+            return (True, f"Impact of `{node}` (what depends on it):\n" + ("\n".join("- " + s for s in lines[:30]) if lines else "Nothing depends on it."), ids)
+        if command == "find_cycles":
+            from codegraph.query_engine import find_cycles
+            cycles = find_cycles()
+            all_ids = list(set(n for c in cycles for n in c))
+            if not cycles:
+                return (True, "No circular dependencies found.", [])
+            lines = [f"Cycle {i+1}: {' → '.join(c)}" for i, c in enumerate(cycles[:5])]
+            return (True, "Circular dependencies:\n" + "\n".join(lines), all_ids)
+        if command == "check_rules":
+            from codegraph.rules import check_rules
+            violations = check_rules()
+            ids = list(set(v.get("from_id", "") for v in violations) | set(v.get("to_id", "") for v in violations))
+            ids = [x for x in ids if x]
+            if not violations:
+                return (True, "No architecture rule violations found.", [])
+            lines = [f"- {v.get('rule', '')}: {v.get('from')} → {v.get('to')}" for v in violations[:10]]
+            return (True, "Rule violations:\n" + "\n".join(lines), ids)
     except Exception as e:
         return (False, str(e), None)
     return (False, f"Unknown command: {command}", None)
