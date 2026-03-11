@@ -4,6 +4,14 @@ var viewParam = urlParams.get('view');
 var view = ['files', 'full', 'complete'].includes(viewParam) ? viewParam : 'files';
 var animateReveal = urlParams.get('animate') !== 'false';  // Gource-like reveal; ?animate=false to disable
 var cy;
+window.addEventListener('themechange', function(e) {
+  if (cy) {
+    var isLight = e.detail.theme === 'light';
+    cy.style().selector('node').style('color', isLight ? '#111827' : '#fff');
+    cy.style().selector('node').style('text-outline-color', isLight ? '#fff' : '#1e1e1e');
+    cy.style().selector('node').style('border-color', isLight ? 'rgba(0,0,0,0.15)' : '#fff');
+  }
+});
 
 function updateStats() {
   if (!cy) return;
@@ -61,7 +69,8 @@ Promise.all([
   fetch('/graph/edges?view=' + view + '&limit=' + edgeLimit).then(res => res.json())
 ]).then(([nodes, edges]) => {
   if (!nodes.length && !edges.length) {
-    document.getElementById('cy').innerHTML = '<div style="color:#888;padding:2em;text-align:center;">No graph data. Index a repository first: <code>python3 codegraph/cli.py index_repo /path/to/repo</code></div>';
+    var emptyColor = document.documentElement.getAttribute('data-theme') === 'light' ? '#6b7280' : '#888';
+    document.getElementById('cy').innerHTML = '<div style="color:' + emptyColor + ';padding:2em;text-align:center;font-family:inherit;">No graph data. Index a repository first: <code style="background:var(--surface-elev);padding:2px 6px;border-radius:4px;">python3 codegraph/cli.py index_repo /path/to/repo</code></div>';
     return;
   }
   var nextView = view === 'files' ? 'full' : view === 'full' ? 'complete' : 'files';
@@ -76,6 +85,10 @@ Promise.all([
   var initialElements = nodes.map(function(n) {
     return animateReveal ? { data: n.data, classes: 'revealing' } : n;
   }).concat(edges);
+  var isLight = document.documentElement.getAttribute('data-theme') === 'light';
+  var labelColor = isLight ? '#111827' : '#fff';
+  var labelOutline = isLight ? '#fff' : '#1e1e1e';
+  var nodeBorder = isLight ? 'rgba(0,0,0,0.15)' : '#fff';
   cy = cytoscape({
     container: document.getElementById('cy'),
     elements: initialElements,
@@ -88,10 +101,16 @@ Promise.all([
         selector: 'node',
         style: {
           'label': 'data(name)',
-          'color': '#fff',
+          'color': labelColor,
+          'text-outline-color': labelOutline,
+          'text-outline-width': 2,
           'text-valign': 'bottom',
           'text-margin-y': 5,
           'font-size': '12px',
+          'background-opacity': 0.88,
+          'border-opacity': 0.5,
+          'border-width': 1.5,
+          'border-color': nodeBorder,
           'background-color': function(ele) {
             const lbl = ele.data('label');
             if(lbl === 'File') return '#0074D9';

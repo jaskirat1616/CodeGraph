@@ -181,8 +181,8 @@ body { transition: background-color 0.2s, color 0.2s; }
     position: fixed;
     top: 60px;
     right: 12px;
-    width: 280px;
-    max-height: 400px;
+    width: 420px;
+    max-height: 560px;
     background: var(--surface-panel);
     border: 1px solid var(--border);
     border-radius: 8px;
@@ -201,13 +201,13 @@ body { transition: background-color 0.2s, color 0.2s; }
 .detail-code-row { margin-top: 8px; }
 .detail-code .code-snippet {
     margin: 4px 0 0 0;
-    padding: 8px;
+    padding: 10px;
     background: var(--code-bg);
     border: 1px solid var(--border);
     border-radius: 6px;
     font-family: var(--font-mono);
-    font-size: 11px;
-    max-height: 200px;
+    font-size: 12px;
+    max-height: 320px;
     overflow: auto;
     white-space: pre;
 }

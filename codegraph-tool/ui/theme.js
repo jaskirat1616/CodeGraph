@@ -14,5 +14,6 @@
   btn.addEventListener('click', function() {
     var next = getTheme() === 'dark' ? 'light' : 'dark';
     setTheme(next);
+    window.dispatchEvent(new CustomEvent('themechange', { detail: { theme: next } }));
   });
 })();
