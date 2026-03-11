@@ -141,6 +141,49 @@ def expand_node(node_id: int):
     return {"nodes": nodes, "edges": edges}
 
 
+# --- Command execution ---
+class CommandRequest(BaseModel):
+    command: str
+    args: dict = {}
+
+@app.post("/command/execute")
+def execute_command(req: CommandRequest):
+    """Execute CLI-like commands: index_repo, find_callers, show_dependencies."""
+    try:
+        if req.command == "index_repo":
+            path = (req.args.get("path") or "").strip()
+            if not path:
+                return {"ok": False, "error": "Missing path", "output": None}
+            if not os.path.isdir(path) and not os.path.isfile(path):
+                return {"ok": False, "error": f"Path not found: {path}", "output": None}
+            from codegraph.repo_scanner import scan_repository
+            from codegraph.graph_builder import insert_into_falkordb
+            entities = scan_repository(path)
+            insert_into_falkordb(path, entities)
+            nf = len(entities["files"])
+            nc = len(entities["classes"])
+            nfn = len(entities["functions"])
+            nm = len(entities["methods"])
+            return {"ok": True, "output": f"Indexed {nf} files, {nc} classes, {nfn} functions, {nm} methods."}
+        if req.command == "find_callers":
+            func = (req.args.get("func") or req.args.get("name") or "").strip()
+            if not func:
+                return {"ok": False, "error": "Missing function name", "output": None}
+            from codegraph.query_engine import find_callers
+            rows = find_callers(func, silent=True)
+            return {"ok": True, "output": rows, "highlight_ids": [r[0] for r in rows]}
+        if req.command == "show_dependencies":
+            node = (req.args.get("node") or req.args.get("name") or "").strip()
+            if not node:
+                return {"ok": False, "error": "Missing node name", "output": None}
+            from codegraph.query_engine import show_dependencies
+            rows = show_dependencies(node, silent=True)
+            return {"ok": True, "output": rows, "highlight_ids": [r[0] for r in rows]}
+        return {"ok": False, "error": f"Unknown command: {req.command}", "output": None}
+    except Exception as e:
+        return {"ok": False, "error": str(e), "output": None}
+
+
 # --- Ollama chat ---
 class ChatRequest(BaseModel):
     question: str

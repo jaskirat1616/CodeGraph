@@ -120,7 +120,7 @@
     chatSend.disabled = true;
     chatStatus.textContent = '';
     addMessage('user', q);
-    var thinkingEl = addThinkingBubble('Translating to Cypher…');
+    var thinkingEl = addThinkingBubble('Understanding your request…');
 
     fetch('/ollama/chat/stream', {
       method: 'POST',
@@ -165,6 +165,15 @@
                       b.className = 'chat-bubble chat-bubble-streaming';
                       b.innerHTML = renderMarkdown(explanation);
                       thinkingEl.appendChild(b);
+                    } else if (obj.stage === 'command_result') {
+                      var cmdOut = obj.content || '';
+                      var cmdIds = obj.highlight_ids || [];
+                      replaceThinkingWithMessage(thinkingEl, cmdOut, null, null);
+                      if (cmdIds.length && typeof window.codegraphHighlightFromResults === 'function') {
+                        window.codegraphHighlightFromResults([cmdIds]);
+                      }
+                      var cp = document.getElementById('chatPanel');
+                      if (cp && cp.classList.contains('chat-open')) cp.classList.remove('chat-open');
                     } else if (obj.stage === 'done') {
                       replaceThinkingWithMessage(thinkingEl, explanation, cypher, results);
                       if (results && results.length && typeof window.codegraphHighlightFromResults === 'function') {

@@ -9,12 +9,12 @@
   window.codegraphSearchQuery = '';
 
   var neonColors = {
-    File: '#00ffff',
-    Class: '#ff3366',
-    Function: '#00ff88',
-    Method: '#ffdd00',
-    Repository: '#cc66ff',
-    Module: '#88aacc'
+    File: '#00d4ff',
+    Class: '#ff2d6a',
+    Function: '#00ff9f',
+    Method: '#ffb800',
+    Repository: '#bf5fff',
+    Module: '#7eb8da'
   };
   function getLabelColors() {
     return neonColors;
@@ -23,7 +23,13 @@
     return 'rgba(100,100,120,0.3)';
   }
   function getLinkColor() {
-    return 'rgba(150,150,200,0.5)';
+    return document.documentElement.getAttribute('data-theme') === 'light' ? 'rgba(80,90,120,0.45)' : 'rgba(150,150,200,0.5)';
+  }
+  function getBgColor() {
+    return document.documentElement.getAttribute('data-theme') === 'light' ? '#f5f5f7' : '#0a0a12';
+  }
+  function getSpriteTextColor() {
+    return document.documentElement.getAttribute('data-theme') === 'light' ? '#1e293b' : '#e2e8f0';
   }
   function getHighlightColor() {
     return '#00ffaa';
@@ -41,13 +47,13 @@
     return base;
   }
   function nodeValFn(n) {
-    if (window.codegraphHighlightIds.has(String(n.id))) return 3.5;
+    if (window.codegraphHighlightIds.has(String(n.id))) return 120;
     var q = (window.codegraphSearchQuery || '').trim().toLowerCase();
     if (q) {
       var name = ((n.name || '') + ' ' + (n.path || '')).toLowerCase();
-      return name.includes(q) ? 2 : 0.8;
+      return name.includes(q) ? 100 : 50;
     }
-    return 2;
+    return 100;
   }
 
   function updateStats(nodes, edges) {
@@ -97,12 +103,36 @@
     }
   };
 
+  function zoomToMatchingNodes(filterFn) {
+    if (!window.codegraphGraph || typeof window.codegraphGraph.zoomToFit !== 'function') return;
+    requestAnimationFrame(function() {
+      requestAnimationFrame(function() {
+        try {
+          window.codegraphGraph.zoomToFit(600, 120, filterFn || undefined);
+        } catch (e) { /* ignore */ }
+      });
+    });
+  }
+
+  var searchZoomTimeout;
   var searchEl = document.getElementById('search');
   if (searchEl) searchEl.addEventListener('input', function() {
     window.codegraphSearchQuery = this.value;
     if (window.codegraphGraph && typeof window.codegraphGraph.refresh === 'function') {
       window.codegraphGraph.refresh();
     }
+    clearTimeout(searchZoomTimeout);
+    searchZoomTimeout = setTimeout(function() {
+      var q = (window.codegraphSearchQuery || '').trim().toLowerCase();
+      if (!q) {
+        zoomToMatchingNodes(null);
+        return;
+      }
+      zoomToMatchingNodes(function(n) {
+        var name = ((n.name || '') + ' ' + (n.path || '')).toLowerCase();
+        return name.includes(q);
+      });
+    }, 400);
   });
 
   window.codegraphHighlightFromResults = function(results) {
@@ -121,10 +151,12 @@
     });
     if (typeof window.codegraphGraph.refresh === 'function') window.codegraphGraph.refresh();
     if (clearBtn) clearBtn.style.display = 'inline-block';
-    if (window.codegraphHighlightIds.size > 0 && typeof window.codegraphGraph.zoomToFit === 'function') {
-      window.codegraphGraph.zoomToFit(600, 80, function(n) {
+    if (window.codegraphHighlightIds.size > 0) {
+      zoomToMatchingNodes(function(n) {
         return window.codegraphHighlightIds.has(String(n.id));
       });
+    } else {
+      zoomToMatchingNodes(null);
     }
   };
 
@@ -135,6 +167,7 @@
     if (window.codegraphGraph && typeof window.codegraphGraph.refresh === 'function') {
       window.codegraphGraph.refresh();
     }
+    zoomToMatchingNodes(null);
   };
 
   var clearBtn = document.getElementById('clearHighlight');
@@ -179,42 +212,65 @@
     }
 
     var THREE = window.THREE;
+    var SpriteText = window.SpriteText;
     function createNeonMetallicNode(n) {
       if (!THREE) return null;
       var color = nodeColorFn(n);
-      var geom = new THREE.SphereGeometry(1, 24, 20);
-      var mat = new THREE.MeshPhongMaterial({
+      var geom = new THREE.SphereGeometry(6, 28, 24);
+      var mat = new THREE.MeshStandardMaterial({
         color: color,
         emissive: color,
-        emissiveIntensity: 0.35,
-        specular: 0xeeeeee,
-        shininess: 80
+        emissiveIntensity: 0.3,
+        metalness: 0.85,
+        roughness: 0.2
       });
       return new THREE.Mesh(geom, mat);
+    }
+    function displayName(n) {
+      var s = (n.name || n.id || 'node').toString();
+      var i = Math.max(s.lastIndexOf('/'), s.lastIndexOf('\\'));
+      return i >= 0 ? s.slice(i + 1) : s;
+    }
+    function createNodeWithText(n) {
+      var sphere = createNeonMetallicNode(n);
+      if (!sphere || !SpriteText) return sphere;
+      var label = displayName(n);
+      if (label.length > 22) label = label.slice(0, 19) + '...';
+      var st = new SpriteText(label, 5);
+      st.color = getSpriteTextColor();
+      st.textHeight = 5;
+      st.fontFace = 'system-ui, -apple-system, sans-serif';
+      if (st.material) st.material.depthWrite = false;
+      if (st.center) st.center.y = -0.6;
+      st.position.z = 2;
+      st.position.y = 4;
+      var group = new THREE.Group();
+      group.add(sphere);
+      group.add(st);
+      return group;
     }
 
     var graph = Graph()(container)
       .graphData({ nodes: graphNodes, links: graphLinks })
-      .nodeLabel(function(n) { return (n.label ? n.label + ': ' : '') + (n.name || n.id); })
+      .nodeLabel(function(n) { return (n.label ? n.label + ': ' : '') + displayName(n); })
       .nodeColor(nodeColorFn)
       .nodeVal(nodeValFn)
-      .nodeRelSize(5)
+      .nodeRelSize(180)
       .nodeOpacity(1)
       .linkColor(function() { return getLinkColor(); })
       .linkWidth(0)
       .linkOpacity(0.6)
-      .nodeThreeObject(createNeonMetallicNode)
+      .nodeThreeObject(createNodeWithText)
       .onNodeClick(function(n) {
         window.codegraphShowDetails(n);
       })
-      .backgroundColor('#0a0a12');
+      .backgroundColor(getBgColor());
 
     window.codegraphGraph = graph;
     updateStats(graphNodes.length, graphLinks.length);
 
     window.addEventListener('themechange', function() {
-      var isLight = document.documentElement.getAttribute('data-theme') === 'light';
-      graph.backgroundColor(isLight ? '#0a0a12' : '#0a0a12');
+      graph.backgroundColor(getBgColor());
       graph.linkColor(function() { return getLinkColor(); });
       if (typeof graph.refresh === 'function') graph.refresh();
     });
